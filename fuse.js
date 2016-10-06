@@ -127,9 +127,9 @@ function FuseInit() {
 	self.watch = function() {
 		
 		var dC       = this instanceof FuseInit,
-		    obj      = dC ? arguments[0] : this, 
-			property = arguments[dC ? 1 : 0], 
-			callback = arguments[dC ? 2 : 1];
+            obj      = dC ? arguments[0] : this, 
+            property = arguments[dC ? 1 : 0], 
+            callback = arguments[dC ? 2 : 1];
 
 		if(typeof obj      === 'undefined') obj = this; //If we're being called via Object.prototype
 		if(typeof obj      !== 'object')                   throw new Error('watch only works on objects.');
@@ -160,9 +160,9 @@ function FuseInit() {
 	self.unWatch = function() {
 				
 		var dC       = this instanceof FuseInit,
-		    obj      = dC ? arguments[0] : this, 
-			property = arguments[dC ? 1 : 0], 
-			callback = arguments[dC ? 2 : 1];
+            obj      = dC ? arguments[0] : this, 
+            property = arguments[dC ? 1 : 0], 
+            callback = arguments[dC ? 2 : 1];
 			
 			
 		if(typeof obj === 'undefined') obj = this; //If we're being called via Object.prototype
@@ -253,9 +253,9 @@ function FuseInit() {
 	self.attach = function() {
 				
 		var dC        = this instanceof FuseInit,
-		    obj       = dC ? arguments[0] : this, 
-			eventName = arguments[dC ? 1 : 0], 
-			callback  = arguments[dC ? 2 : 1];
+            obj       = dC ? arguments[0] : this, 
+            eventName = arguments[dC ? 1 : 0], 
+            callback  = arguments[dC ? 2 : 1];
 			
 		if(typeof obj       === "undefined") obj = this; //If we're being called via Object.prototype
 		if(typeof obj       !== "object")                             throw new Error("attach() only works on objects.");
@@ -301,9 +301,9 @@ function FuseInit() {
 	self.detach = function() {
 		
 		var dC        = this instanceof FuseInit,
-		    obj       = dC ? arguments[0] : this, 
-			eventName = arguments[dC ? 1 : 0], 
-			callback  = arguments[dC ? 2 : 1];
+            obj       = dC ? arguments[0] : this, 
+            eventName = arguments[dC ? 1 : 0], 
+            callback  = arguments[dC ? 2 : 1];
 			
 		if(typeof obj === "undefined") obj = this; //If we're being called via Object.prototype
 		if(typeof eventName !== "string")  throw new Error("detach() requires param2 be the name of the method to detach the listeners from");
