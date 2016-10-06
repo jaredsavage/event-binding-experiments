@@ -8,7 +8,7 @@ function FuseInit() {
 	pri.config.extendNativeObjects   = (typeof op.extendNativeObjects === 'boolean' ? op.extendNativeObjects : true);
 	pri.watchCycleMaxCPUTime         = 0.05 //Percentage of processing time available to use for watch cycle. Auto-adjusts based on time it took to complete the watch cycle
 	pri.objectTrackers               = []
-	pri.fuseIDTracker                = 0
+	pri.objectFuseIDTracker          = 0
 	pri.date                         = (new Date)
 	
 	/**
@@ -19,7 +19,7 @@ function FuseInit() {
 	 */
 	pri.getObjectTracker = function(obj) {
 		
-		if(typeof obj !== "object") throw new Error("getObjectTracker() only works on objects.");
+		if(typeof obj !== 'object') throw new Error('getObjectTracker() only works on objects.');
 		
 		if(typeof obj.__fuseID === 'undefined') {
 			
@@ -28,11 +28,11 @@ function FuseInit() {
 			pri.objectTrackers.forEach(function(v,i) { if(v === undefined) fID = i; });
 			
 			//If we don't find an empty slot to use, increment
-			if(typeof fID === 'undefined') fID = pri.fuseIDTracker++
+			if(typeof fID === 'undefined') fID = pri.objectFuseIDTracker++
 			
 			//Burn a tracking ID onto the object, so we can re-identify it if we're passed it again. 
 			//We could track without burning an id in, but it'll make re-identifying slower (scanning and comparing).
-			//I think the trade-off of adding an attribute to the object is reasonable.
+			//I think the trade-off of adding an attribute to the object is reasonable, if we make it non-enumerable
 			Object.defineProperty(obj, '__fuseID', { value: fID, enumerable: false, writable: false });
 		}
 		
@@ -47,14 +47,22 @@ function FuseInit() {
 	 */
 	pri.objectTrackerCleanUp = function(obj) {
 
-		if(typeof obj !== "object") throw new Error("objectTrackerCleanUp only works on objects.");
+		if(typeof obj !== 'object') throw new Error('objectTrackerCleanUp only works on objects.');
 
 		if(typeof obj.__fuseID !== 'undefined') {
 
 			var oT = pri.getObjectTracker(obj);
 
+			var activeWatchers      = Object.keys(oT.watchedProps).length !== 0;
+			var activeEventBindings = oT.events.length !== 0;
+			
+			//If we have no more watchers, stop the watch cycle
+			if(!activeWatchers) {
+				clearTimeout(pri.watchCycleTimer);
+			}
+			
 			//No watchers and no event bindings left
-			if(Object.keys(oT.watchedProps)).length === 0 && oT.events.length === 0) {
+			if(!activeWatchers && !activeEventBindings) {
 				pri.objectTrackers[obj.__fuseID] = undefined;
 				delete obj.__fuseID;
 			}
@@ -82,8 +90,8 @@ function FuseInit() {
 	
 	/**
 	 * Compare two items for equivalency
-	 * @param {mixed} item 1
-	 * @param {mixed} item 2
+	 * @param {*} item 1
+	 * @param {*} item 2
 	 * @return {boolean} -- whether the two items have the same type and value
 	 */
 	pri.valuesAreEqual = function() {
@@ -98,7 +106,7 @@ function FuseInit() {
 		switch(tOO1) {
 			case 'string':
 			case 'number':
-				return arguments[0] === arguments[1]);
+				return arguments[0] === arguments[1];
 			break;
 			case 'object': 
 				//TODO: replace 'object' with a deep object scan so that if an object is being watched and a child node changes, we know about it.
@@ -116,17 +124,29 @@ function FuseInit() {
 	 * @param {string}  property -- string of property to watch
 	 * @param {string}  callback -- function to trigger when changes are detected
 	 */
-	self.watch = function(obj, property, callback) {
+	self.watch = function() {
 		
-		if(typeof obj      === "undefined") obj = this; //If we're being called via Object.prototype
-		if(typeof obj      !== "object")                   throw new Error("watch only works on objects.");
-		if(typeof property !== "string")                   throw new Error("watch requires the property to watch as param2");
-		if(!callback || !callback.call || !callback.apply) throw new Error("watch requires a callback function as param3");
+		var dC       = this instanceof FuseInit,
+		    obj      = dC ? arguments[0] : this, 
+			property = arguments[dC ? 1 : 0], 
+			callback = arguments[dC ? 2 : 1];
+
+		if(typeof obj      === 'undefined') obj = this; //If we're being called via Object.prototype
+		if(typeof obj      !== 'object')                   throw new Error('watch only works on objects.');
+		if(typeof property !== 'string')                   throw new Error('watch requires the property to watch as param2');
+		if(!callback || !callback.call || !callback.apply) throw new Error('watch requires a callback function as param3');
 		
 		var oT = pri.getObjectTracker(obj);
+		
+		//If this is our first watcher, start up the watch cycle.
+		if(Object.keys(oT.watchedProps).length === 0) {
+			pri.watchCycle();
+		}		
+		
 		var oW = oT.watchedProps[property] || (oT.watchedProps[property] = new pri.C_WatchedProp(obj[property]));
 		
 		oW.callbacks.push(callback);
+		
 		return callback;
 	}
 	
@@ -137,35 +157,48 @@ function FuseInit() {
 	 * @param {string}  property -- string of property to watch
 	 * @param {string}  callback -- function to trigger when changes are detected
 	 */
-	self.unWatch = function(obj, property, callback) {
-		
-		if(typeof obj === "undefined") obj = this; //If we're being called via Object.prototype
-		if(typeof obj !== "object")                   throw new Error("watch only works on objects.");
+	self.unWatch = function() {
+				
+		var dC       = this instanceof FuseInit,
+		    obj      = dC ? arguments[0] : this, 
+			property = arguments[dC ? 1 : 0], 
+			callback = arguments[dC ? 2 : 1];
+			
+			
+		if(typeof obj === 'undefined') obj = this; //If we're being called via Object.prototype
+		if(typeof obj !== 'object') throw new Error('watch only works on objects.');
 		
 		var oT = pri.getObjectTracker(obj);
 		
-		//Remove all watchers for this object
-		if(!property) {
+		//Remove specific watcher
+		if(!!callback) {
+			Object.keys(oT.watchedProps).forEach(function(k) {
+				oT.watchedProps[k].callbacks.forEach(function(cb, i2) {
+					if(cb === callback) {
+						//We found a match, let's remove it.
+						oT.watchedProps[k].callbacks.splice(i2,1);
+					};
+				})
+			})
+		
+		//Remove all watchers for a property
+		} else if(!!property) {
+			
+			delete oT.watchedProps[property];
+			
+		//Remove all watchers for the object
+		} else {
 			Object.keys(oT.watchedProps).forEach(function(k, i) {
 				delete oT.watchedProps[i];
 			})
-		} else {
-			if(callback) {
-				Object.keys(oT.watchedProps[property]).forEach(function(k, i) {
-					delete oT.watchedProps[property][i];
-				})
-			}
-			delete oT.watchedProps[property];
 		}
 		
-		
-		
-		oW.callbacks.push(callback);
+		pri.objectTrackerCleanUp (obj);
 		
 	}
 
 	//Trigger the watch cycle
-	(pri.watchCycle = function watchCycle() {
+	pri.watchCycle = function watchCycle() {
 		
 		pri.watchCycleStartTime = pri.date.getTime();
 
@@ -173,7 +206,7 @@ function FuseInit() {
 		.objectTrackers
 		.filter(function(oT) {
 			//Maybe use a dedicated watchers tracker so we can skip this filter
-			return Objects.keys(oT.watchedProps).length !== 0;
+			return Object.keys(oT.watchedProps).length !== 0;
 		})
 		.forEach(function(oT) {
 		
@@ -208,7 +241,7 @@ function FuseInit() {
 		pri.watchCycleDuration  = pri.watchCycleEndTime - pri.watchCycleStartTime;
 		pri.watchCycleFrequency = Math.floor(pri.watchCycleDuration / pri.watchCycleMaxCPUTime);
 		
-	})();
+	};
 	
 	/**
 	 * Add a piggyback listener to any object's method
@@ -217,13 +250,20 @@ function FuseInit() {
 	 * @param  {string}  callback   -- string of classname to append
 	 * @return {object}             -- the supplied callback
 	 */
-	pri.attach = function(obj, eventName, callback) {
-		
+	self.attach = function() {
+				
+		var dC        = this instanceof FuseInit,
+		    obj       = dC ? arguments[0] : this, 
+			eventName = arguments[dC ? 1 : 0], 
+			callback  = arguments[dC ? 2 : 1];
+			
 		if(typeof obj       === "undefined") obj = this; //If we're being called via Object.prototype
 		if(typeof obj       !== "object")                             throw new Error("attach() only works on objects.");
 		if(typeof eventName !== "string")                             throw new Error("attach() requires the method name to attach to as param2");
 		if(!callback || !callback.call || !callback.apply)            throw new Error("attach() requires a callback function as param3");
-		if(!Object.getOwnPropertyDescriptor(obj, eventName).writable) throw new Error("attach() supplied method to listen on must be writable. Is your object frozen?");
+		
+		var objDesc = Object.getOwnPropertyDescriptor(obj, eventName);
+		if(!objDesc.writable) throw new Error("attach() supplied method to listen on must be writable. Is your object frozen?");
 		
 		var oT = pri.getObjectTracker(obj, true);
 		var eB = oT.events;
@@ -232,7 +272,7 @@ function FuseInit() {
 			If it's the first time we attach to this object, we replace the method to watch with a 
 			wrapper which executes the original function, along with any attached listeners
 		*/
-		if(typeof eB[eventName] === "undefined") {
+		if(typeof eB[eventName] === 'undefined') {
 			eB[eventName] = [obj[eventName]]; //first element is our original function
 			
 			//Overwrite the original function with a wrapper 
@@ -258,8 +298,13 @@ function FuseInit() {
 	 * Detach listeners of an Object's method
 	 * @param {string} eName -- name of method to unbind from
 	 */
-	pri.detach = function(obj, eventName, callback) {
-
+	self.detach = function() {
+		
+		var dC        = this instanceof FuseInit,
+		    obj       = dC ? arguments[0] : this, 
+			eventName = arguments[dC ? 1 : 0], 
+			callback  = arguments[dC ? 2 : 1];
+			
 		if(typeof obj === "undefined") obj = this; //If we're being called via Object.prototype
 		if(typeof eventName !== "string")  throw new Error("detach() requires param2 be the name of the method to detach the listeners from");
 		
@@ -268,9 +313,9 @@ function FuseInit() {
 		
 		//If we're supplied a callback, check if it matches any of the ones we have defined on this method. If so, remove it.
 		if(!!callback && !!callback.call && !!callback.apply) {
-			for(var i = 1; i < eB[eventName].length; i++;) {
+			for(var i = 1; i < eB[eventName].length; i++) {
 				if(eB[eventName][i] === callback) {
-					eB[eventName][i].splice(i,1);
+					eB[eventName].splice(i,1);
 				}
 			}
 			
@@ -293,75 +338,15 @@ function FuseInit() {
 	}
 	
 	//Extend all objects. A bit intrusive, but convenient.
-	if(pri.config.extendNativeObjects) {
-		Object.prototype.FuseWatch   = pri.watch.bind(undefined, undefined); 
-		Object.prototype.FuseUnWatch = pri.unWatch.bind(undefined, undefined); 
-		Object.prototype.FuseAttach  = pri.attach.bind(undefined, undefined);
-		Object.prototype.FuseDetach  = pri.detach.bind(undefined, undefined); 
+	if(pri.config.extendNativeObjects && typeof Object.prototype.fuseWatch === 'undefined') {
+		
+		Object.prototype.fuseWatch    = self.watch;
+		Object.prototype.fuseUnWatch  = self.unWatch;
+		Object.prototype.fuseAttach   = self.attach;
+		Object.prototype.fuseDetach   = self.detach;
+	
 	}
 	
 	return self;
 	
 }
-
-window.Fuse = new FuseInit();
-
-/* Tests */
-
-function Example() {
-	
-	this.getThing = function() {
-		console.log("getThing was called", arguments);
-	}
-	this.getThing2 = function() {
-		console.log("getThing2 was called", arguments);
-	}
-	
-	this.test1 = 1234;
-	this.test2 = 1234;
-	
-}
-
-var ex = new Example();
-
-	ex.getThing();
-	ex.getThing2();
-	
-	Fuse.watch(ex, 'test1', function(val) {
-		console.log('ex.test1 has changed to '+ val + 'and watcher 1 has triggered;');
-	})
-	
-	Fuse.watch(ex, 'test1', function(val) {
-		console.log('ex.test1 has changed to '+ val + 'and watcher 2 has triggered;');
-	})
-	
-	//Watch a property which hasn't yet been defined.
-	Fuse.watch(ex, 'test5', function(val) {
-		console.log('ex.test5 has changed to '+ val + 'and watcher 3 has triggered;');
-	})
-	
-	ex.jsBind("getThing", function() {
-		console.log("getThing event binding 1 was called!", arguments);
-	});
-
-	ex.jsBind("getThing", function() {
-		console.log("getThing event binding 2 was called!", arguments);
-	});
-
-	ex.jsBind("getThing", function() {
-		console.log("getThing event binding 3 was called!", arguments);
-	});
-	
-	ex.jsBind("getThing2", function() {
-		console.log("getThing2 event binding 1 was called!", arguments);
-	});
-
-	ex.getThing(1234);
-	ex.getThing2(1234);
-	
-	ex.jsUnbind("getThing");
-	
-	ex.getThing();
-	ex.getThing2();
-
-	ex.jsUnbind("getThing2");
