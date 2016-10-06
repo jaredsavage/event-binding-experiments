@@ -126,7 +126,7 @@ function FuseInit() {
 	 */
 	self.watch = function() {
 		
-		var dC       = this instanceof FuseInit,
+        var dC       = this instanceof FuseInit,
             obj      = dC ? arguments[0] : this, 
             property = arguments[dC ? 1 : 0], 
             callback = arguments[dC ? 2 : 1];
@@ -159,7 +159,7 @@ function FuseInit() {
 	 */
 	self.unWatch = function() {
 				
-		var dC       = this instanceof FuseInit,
+        var dC       = this instanceof FuseInit,
             obj      = dC ? arguments[0] : this, 
             property = arguments[dC ? 1 : 0], 
             callback = arguments[dC ? 2 : 1];
@@ -252,7 +252,7 @@ function FuseInit() {
 	 */
 	self.attach = function() {
 				
-		var dC        = this instanceof FuseInit,
+        var dC        = this instanceof FuseInit,
             obj       = dC ? arguments[0] : this, 
             eventName = arguments[dC ? 1 : 0], 
             callback  = arguments[dC ? 2 : 1];
@@ -300,7 +300,7 @@ function FuseInit() {
 	 */
 	self.detach = function() {
 		
-		var dC        = this instanceof FuseInit,
+        var dC        = this instanceof FuseInit,
             obj       = dC ? arguments[0] : this, 
             eventName = arguments[dC ? 1 : 0], 
             callback  = arguments[dC ? 2 : 1];
